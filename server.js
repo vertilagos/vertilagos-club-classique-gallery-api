@@ -4,7 +4,10 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['https://verti.ng', 'http://verti.ng'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Google Drive API setup

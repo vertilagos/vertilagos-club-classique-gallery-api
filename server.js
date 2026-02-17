@@ -4,8 +4,10 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+
+// Middleware
 app.use(cors({
-  origin: ['https://verti.ng', 'http://verti.ng'],
+  origin: ['https://verti.ng', 'http://verti.ng', 'http://localhost:3000'],
   credentials: true
 }));
 app.use(express.json());
@@ -22,9 +24,29 @@ oauth2Client.setCredentials({
 });
 
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
-
-// Main folder ID from environment variable
 const MAIN_FOLDER_ID = process.env.MAIN_FOLDER_ID;
+
+// Simple Cache Object
+let galleryCache = {
+  data: null,
+  lastUpdated: null
+};
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+/**
+ * Helper to transform Google Drive file objects to gallery-friendly objects
+ * Note: We swap the unreliable 'uc' export link for a high-res thumbnail link hack.
+ */
+const transformFile = (file) => ({
+  id: file.id,
+  name: file.name,
+  mimeType: file.mimeType,
+  thumbnailLink: file.thumbnailLink,
+  // Replacing =s220 (default) with =s1000 for high-res preview
+  imageUrl: file.thumbnailLink ? file.thumbnailLink.replace(/=s\d+/, '=s1000') : null,
+  downloadUrl: file.webContentLink,
+  createdTime: file.createdTime
+});
 
 /**
  * Get all subfolders within the main folder
@@ -36,10 +58,9 @@ async function getGalleryFolders() {
       fields: 'files(id, name, createdTime, modifiedTime)',
       orderBy: 'name'
     });
-    
     return response.data.files;
   } catch (error) {
-    console.error('Error fetching gallery folders:', error);
+    console.error('Error fetching gallery folders:', error.message);
     throw error;
   }
 }
@@ -55,31 +76,24 @@ async function getImagesFromFolder(folderId) {
       orderBy: 'createdTime desc'
     });
     
-    // Generate direct view links for images
-    const images = response.data.files.map(file => ({
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      thumbnailLink: file.thumbnailLink,
-      imageUrl: `https://drive.google.com/uc?export=view&id=${file.id}`,
-      downloadUrl: file.webContentLink,
-      createdTime: file.createdTime
-    }));
-    
-    return images;
+    return response.data.files.map(transformFile);
   } catch (error) {
-    console.error('Error fetching images:', error);
+    console.error(`Error fetching images from folder ${folderId}:`, error.message);
     throw error;
   }
 }
 
 /**
- * Get complete gallery structure
+ * Get complete gallery structure with basic caching logic
  */
-async function getCompleteGallery() {
+async function getCompleteGallery(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && galleryCache.data && (now - galleryCache.lastUpdated < CACHE_DURATION)) {
+    return galleryCache.data;
+  }
+
   try {
     const folders = await getGalleryFolders();
-    
     const galleries = await Promise.all(
       folders.map(async (folder) => {
         const images = await getImagesFromFolder(folder.id);
@@ -93,87 +107,69 @@ async function getCompleteGallery() {
         };
       })
     );
-    
+
+    // Update Cache
+    galleryCache.data = galleries;
+    galleryCache.lastUpdated = now;
     return galleries;
   } catch (error) {
-    console.error('Error fetching complete gallery:', error);
+    console.error('Error fetching complete gallery:', error.message);
     throw error;
   }
 }
 
-// API Endpoints
+// --- API Endpoints ---
 
-/**
- * GET /api/galleries
- * Returns all gallery folders with their images
- */
 app.get('/api/galleries', async (req, res) => {
   try {
     const galleries = await getCompleteGallery();
     res.json({
       success: true,
       count: galleries.length,
+      cached: Date.now() - galleryCache.lastUpdated < CACHE_DURATION,
       data: galleries
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch galleries',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Failed to fetch galleries', message: error.message });
   }
 });
 
-/**
- * GET /api/galleries/:folderId
- * Returns images from a specific gallery folder
- */
 app.get('/api/galleries/:folderId', async (req, res) => {
   try {
     const { folderId } = req.params;
     const images = await getImagesFromFolder(folderId);
-    res.json({
-      success: true,
-      count: images.length,
-      data: images
-    });
+    res.json({ success: true, count: images.length, data: images });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch gallery images',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Failed to fetch images', message: error.message });
   }
 });
 
-/**
- * GET /api/folders
- * Returns only the folder list (lighter request)
- */
 app.get('/api/folders', async (req, res) => {
   try {
     const folders = await getGalleryFolders();
-    res.json({
-      success: true,
-      count: folders.length,
-      data: folders
-    });
+    res.json({ success: true, count: folders.length, data: folders });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch folders',
-      message: error.message
-    });
+    res.status(500).json({ success: false, error: 'Failed to fetch folders', message: error.message });
   }
 });
 
-// Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), cacheAge: galleryCache.lastUpdated });
 });
 
+// Server startup
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Main folder ID: ${MAIN_FOLDER_ID}`);
+const server = app.listen(PORT, () => {
+  console.log(`-----------------------------------------`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📂 Monitoring Folder: ${MAIN_FOLDER_ID}`);
+  console.log(`-----------------------------------------`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Try a different port.`);
+  } else {
+    console.error('❌ Server error:', err);
+  }
 });

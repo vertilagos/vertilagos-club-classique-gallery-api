@@ -25,29 +25,4 @@
   }
 }
 ```
-
-4. Click **"Commit new file"**
-
----
-
-### Step 4: Create .gitignore
-
-1. Click **"Add file"** → **"Create new file"**
-2. File name: `.gitignore`
-3. **Copy and paste:**
-```
-node_modules/
-.env
-*.log
-.DS_Store
-```
-
-4. Click **"Commit new file"**
-
----
-
-### Step 5: Get Your Repository URL
-
-Your repository URL is:
-```
 https://github.com/YOUR_USERNAME/club-classique-gallery-api

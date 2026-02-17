@@ -1,0 +1,53 @@
+{
+  "name": "google-drive-gallery",
+  "version": "1.0.0",
+  "description": "Dynamic gallery system that syncs with Google Drive folders",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "google-drive",
+    "gallery",
+    "image-sync"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "googleapis": "^128.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
+```
+
+4. Click **"Commit new file"**
+
+---
+
+### Step 4: Create .gitignore
+
+1. Click **"Add file"** → **"Create new file"**
+2. File name: `.gitignore`
+3. **Copy and paste:**
+```
+node_modules/
+.env
+*.log
+.DS_Store
+```
+
+4. Click **"Commit new file"**
+
+---
+
+### Step 5: Get Your Repository URL
+
+Your repository URL is:
+```
+https://github.com/YOUR_USERNAME/club-classique-gallery-api
